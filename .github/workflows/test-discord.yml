@@ -1,0 +1,25 @@
+name: Test Discord message
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Send requested test video
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+        run: |
+          python - <<'PY'
+          import os
+          from bot import send_video
+          send_video(os.environ['DISCORD_BOT_TOKEN'], os.environ['DISCORD_CHANNEL_ID'], 'mE09Xu5A-7g')
+          print('Discord accepted the test message.')
+          PY

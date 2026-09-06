@@ -1,0 +1,59 @@
+name: YouTube notifications
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: youtube-notifier
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore notification history
+        id: restore
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --heads origin bot-state; then
+            git fetch origin bot-state:refs/remotes/origin/bot-state
+            git show FETCH_HEAD:state.sqlite3 > state.sqlite3
+          else
+            code=$?
+            if [ "$code" -ne 2 ]; then exit "$code"; fi
+          fi
+      - name: Check YouTube and notify Discord
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+        run: python bot.py --once
+      - name: Save notification history
+        if: ${{ always() && steps.restore.outcome == 'success' }}
+        shell: bash
+        run: |
+          if [ ! -f state.sqlite3 ]; then exit 0; fi
+          python -c "import sqlite3; c=sqlite3.connect('state.sqlite3'); assert c.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'"
+          mv state.sqlite3 "$RUNNER_TEMP/bobuks-state.sqlite3"
+          if git show-ref --verify --quiet refs/remotes/origin/bot-state; then
+            git checkout -B bot-state origin/bot-state
+          else
+            git checkout --orphan bot-state
+            git rm -rf --ignore-unmatch .
+          fi
+          cp "$RUNNER_TEMP/bobuks-state.sqlite3" state.sqlite3
+          git add -f state.sqlite3
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Save notification history'
+          git push origin HEAD:bot-state

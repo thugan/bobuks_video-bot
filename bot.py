@@ -64,7 +64,11 @@ def resolve_channel(env):
 
 def parse_feed(data, channel):
     root = ET.fromstring(data)
-    if root.tag != '{' + NS['a'] + '}feed' or root.findtext('yt:channelId', namespaces=NS) != channel:
+    feed_channel = (root.findtext('yt:channelId', namespaces=NS) or '').strip()
+    accepted_ids = {channel}
+    if re.fullmatch(r'UC[\w-]{22}', channel):
+        accepted_ids.add(channel[2:])
+    if root.tag != '{' + NS['a'] + '}feed' or feed_channel not in accepted_ids:
         raise ValueError('YouTube повернув неочікувану стрічку.')
     videos = []
     for entry in root.findall('a:entry', NS):
